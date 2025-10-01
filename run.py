@@ -14,11 +14,14 @@ s = StringIO()
 #sys.stdout = s
 
 def main ():
+    """Main function to run the optimization experiments."""
     start = time.time()
+    # Check for a command-line argument to run a batch experiment
     if((sys.argv[1]) == "x"): 
         sys.stdout = sys.__stdout__
         archivo = "ArrivalLima190504.txt"
         a=corrida (archivo)
+        # ... (runs for other dates)
         archivo = "ArrivalLima190505.txt"
         b=corrida (archivo)
         archivo = "ArrivalLima190506.txt"
@@ -34,6 +37,7 @@ def main ():
         archivo = "ArrivalLima190521.txt"
         h=corrida (archivo)
         
+        # Print summary of results
         print("-------------------------")
         print("Experimentación Final: ")
         print("4 de mayo: "+ str(round(a,2)))
@@ -47,7 +51,8 @@ def main ():
         print ("Promedio: "+str(round((a+b+c+d+e+f+g+h)/8,2)))
         print("-------------------------")
         
-    else: 
+    else:
+        # Run for a single file specified in the command line
         corrida (sys.argv[1])
         sys.stdout = sys.__stdout__
         print(s.getvalue())
@@ -55,11 +60,18 @@ def main ():
     print("Tiempo de ejecución: " + str((end-start)))
 
 def corrida(archivo):
+    """Runs a single optimization instance for a given flight data file.
+    
+    Args:
+        archivo (str): The path to the input text file with flight data.
+
+    Returns:
+        float: The final energy (cost) of the best solution found.
+    """
     with open(archivo) as json_file:  
         data = json.loads(json_file.read().replace("\'", "\""))
-    #r2 = requests.get(url='https://aviation-edge.com/v2/public/timetable?key=76a9f2-5aad26&iataCode=LIM&type=arrival')
-    #data = r2.json()
 
+    # Filter out flights that have already landed or were cancelled
     data_filtered = list(filter(lambda x : x['status'] != 'landed' and x['status'] != 'cancelled', data))
     data_canceled = list (filter(lambda x: x['status'] == 'cancelled',data))
     listaVuelos = []
@@ -67,9 +79,10 @@ def corrida(archivo):
     Clases.Vuelo.nVuelo =0
     i = 0
     for flight in data_filtered:
+        # --- Data Parsing and Object Creation ---
         i +=1
         vuelo = Clases.Vuelo()
-        #aleatorizar la muestra
+        # Randomly assign a size to the aircraft for simulation purposes
         vuelo.setTamano(tamanos[round(random.random()*2)])
         jsonDestino = flight ['arrival']
         anho = int(jsonDestino['scheduledTime'][0:4])
@@ -124,11 +137,13 @@ def corrida(archivo):
         vuelo.asignarIDVuelo()
         listaVuelos.append(vuelo)
 
+    # --- Initialize Airport Resources (Gates and Zones) ---
     nPuertas = 20
     nZonas = 52
     
     listaZonas = []
     listaPuertas = []
+    # Create Puerta (Gate) objects with random sizes
     for i in range(1,nPuertas+1):
         area2 = Clases.Puerta("Puerta",tamanos[round(random.random()*2)],i, random.random()*499+1,random.random()*499+1,10)
         listaPuertas.append(area2)
@@ -137,9 +152,11 @@ def corrida(archivo):
         area = Clases.Zona("Zona", tamanos[round(random.random()*2)], i, random.random()*499+1, random.random()*499+1)
         listaZonas.append(area)
 
+    # --- Run the Simulated Annealing + Tabu Search Algorithm ---
     ann = Metaheuristico.Annealer(listaVuelos,listaPuertas,listaZonas)
     x,y = ann.anneal()
 
+    # --- Print the final results in a JSON-like format ---
     print ("{ [", end="")
     for i in x[0]:
         i.imprimirLista()
@@ -153,13 +170,6 @@ def corrida(archivo):
         i.imprimirLista() 
     print (" ] }, {", end="")
     print (json.dumps(data_canceled),end="")
-    # cont = 0
-    # for i in data_canceled:
-    #     if (cont ==0):
-    #         cont = 1
-    #     else:
-    #         print(", ",end ="") 
-    #         i.printJson()
 
     print ("} ",end="")
     

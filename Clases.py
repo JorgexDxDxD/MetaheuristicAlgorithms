@@ -4,6 +4,7 @@ from copy import deepcopy,copy
 import sys
 
 class Avion :
+    """Represents an aircraft."""
     def __init__ (self,numeroRegistro=None,icao=None,tipoAvion=None,tAerolinea=None):
         pass
     
@@ -23,6 +24,7 @@ class Avion :
         self.tAerolinea = tAerolinea
 
 class Aeropuerto:
+    """Represents an airport."""
     def __init__ (self, iata=None, icao=None):
         pass
 
@@ -36,6 +38,7 @@ class Aeropuerto:
         self.nombre = nombre
 
 class TAerolinea:
+    """Represents an airline."""
     def __init__ (self,idAerolinea=None, iata=None,icao=None):
         pass
 
@@ -52,6 +55,7 @@ class TAerolinea:
         self.nombre = nombre
 
 class TipoAvion:
+    """Represents a type of aircraft with specific dimensions."""
     def __init__(self, modelo, pais, idTipoAvion): 
         pass
 
@@ -64,7 +68,8 @@ class TipoAvion:
     def addAncho(self,ancho):
         self.ancho=ancho
 
-class Vuelo:    
+class Vuelo:
+    """Represents a single flight with its schedule and assignment details."""
     nVuelo = 0    
     def __init__ (self,  estado = None, avion =None,tiempoEstimado =None,tiempoProgramado=None, \
         tiempoLlegada=None,  icao=None, iata=None, \
@@ -100,7 +105,7 @@ class Vuelo:
         self.tiempoEstimado = tiempoEstimado
 
     def addTiempoProgramado (self,tiempoProgramado):
-        # no se usa, ahora todo será addTiempoEstimado
+        # This is used for the GA, while SA uses tiempoEstimado.
         self.tiempoProgramado=tiempoProgramado
 
     def setTiempoLlegada (self, tiempoLlegada):
@@ -149,15 +154,11 @@ class Vuelo:
         Vuelo.nVuelo +=1
         self.idVuelo = Vuelo.nVuelo
 
-    def printJson (self):
-        # print ("{", end="")
-        # print("{ \"numeroVuelo\": \""+ str(self.icao) \
-        #     + "\", \"TiempoEstimado\": \""+ str(self.tiempoEstimado) \
-        #     + "\", \"TiempoLlegada\": \""+ str(self.tiempoLlegada) + "\" }",end="") 
-        # print ("}", end="")
-        pass
-
 class BloqueVuelo:
+    """Represents a block of time in an area's schedule.
+    
+    It can be either an occupied block (a flight) or an empty block (idle time).
+    """
     def __init__(self):
         self.vuelo = None
         self.ocupado=None
@@ -170,7 +171,7 @@ class BloqueVuelo:
         self.vuelo = vuelo
         self.ocupado = True
         t=tiempo
-
+        # A flight occupies a 3-hour window: 1 hour before and 2 hours after arrival.
         self.tiempoInicio = t-timedelta(hours =1)
         self.tiempoFin = t + timedelta(hours=2)
 
@@ -180,6 +181,11 @@ class BloqueVuelo:
         self.ocupado=False
 
 class ListaVuelos:
+    """A doubly-linked list representing the schedule for a single gate or zone.
+    
+    It's a sequence of occupied (BloqueVuelo) and empty time slots.
+    It starts as one large empty block from 2019 to 2020.
+    """
     def __init__ (self):
         self.inicio = BloqueVuelo()
 
@@ -192,17 +198,15 @@ class ListaVuelos:
         self.fin = self.inicio
         self.cantidad=0
         self.cantBloques=1
-        #self.tiempoLibre = self.tiempoFin - self.tiempoInicio
         
     def insertarBloque (self, bloque,pos=0):
+        """Inserts a flight block into the first available empty slot."""
         p = self.inicio
         ant = None
         ubicado = False
         while(p is not None):
             if (not p.ocupado and p.tiempoInicio <= bloque.tiempoInicio and \
                 p.tiempoFin >= bloque.tiempoFin):
-
-                #self.tiempoLibre = self.tiempoLibre - (bloque.tiempoFin - bloque.tiempoInicio)
                 bloqueAnt = ant    
                 bloqueSig = p.sig
                 if (p.tiempoInicio != bloque.tiempoInicio):
@@ -211,14 +215,14 @@ class ListaVuelos:
                     if(ant is None):
                         self.inicio = bloqueAnt
                     else:
-                        ant.sig = bloqueAnt
-                        bloqueAnt.ant = ant #doblemente enlazado 
+                        ant.sig = bloqueAnt # Link previous block to new empty block
+                        bloqueAnt.ant = ant # Doubly-linked
                     self.cantBloques += 1
                 if (p.tiempoFin != bloque.tiempoFin):
                     bloqueSig = BloqueVuelo()
                     bloqueSig.definirEspacioVacio(bloque.tiempoFin,p.tiempoFin)
-                    bloqueSig.sig = p.sig
-                    bloqueSig.ant = p #doblemente enlazado 
+                    bloqueSig.sig = p.sig # Link new empty block to the one after
+                    bloqueSig.ant = p # Doubly-linked
                     self.cantBloques += 1
 
                 if(bloqueAnt is None):
@@ -227,7 +231,7 @@ class ListaVuelos:
                     bloqueAnt.sig = bloque
 
                 if(bloqueSig is not None):
-                    bloqueSig.ant = bloque #doblemente enlazado
+                    bloqueSig.ant = bloque # Doubly-linked
 
                 bloque.sig = bloqueSig
                 bloque.ant = bloqueAnt
@@ -236,12 +240,13 @@ class ListaVuelos:
                 break
             ant = p
             p = p.sig
-        if (ubicado): 
-            return 1 #self.tiempoLibre
+        if (ubicado):
+            return 1
         else: 
             return -1
 
 class Area: 
+    """Base class for a resource that can be assigned a flight (a Gate or a Zone)."""
     def __init__ (self, tipoArea, tamano, idArea, coordenadaXCentro=0.0, coordenadaYCentro=0.0):
         self.idArea = idArea
         self.tipoArea = tipoArea
@@ -249,6 +254,7 @@ class Area:
         self.vuelos = ListaVuelos()
         
     def insertarVuelo(self, vuelo,tiempo):
+        """Tries to insert a flight into this area's schedule."""
         if(self.tamano != vuelo.tamano):
             return -1
         bloque = BloqueVuelo()        
@@ -261,6 +267,7 @@ class Area:
             return -1
 
     def imprimirLista(self):
+        """Prints the schedule for this area in a JSON-like format."""
         print ("{ \"tipo\": \""+ self.tamano + " "+str(self.idArea) + "\", ",end="")
         print ("\"vuelos\": [ ",end="")
         p=self.vuelos.inicio
@@ -270,19 +277,15 @@ class Area:
                 if (f==0):
                     f=1
                 else:
-                    print(", ",end="")
-            #if (p.ocupado):
+                    print(", ",end="")            
                 print("{ \"numeroVuelo\": \""+ str(p.vuelo.icao) \
                     + "\", \"TiempoEstimado\": \""+ str(p.vuelo.tiempoEstimado) \
                     + "\", \"TiempoLlegada\": \""+ str(p.vuelo.tiempoLlegada) + "\" }",end="") 
-            #else:
-            #    print("{ \"TiempoINI\": \""+ str(p.tiempoInicio) \
-            #        + "\", \"TiempoFIN\": \""+ str(p.tiempoFin) + "\" }",end="") 
             p=p.sig            
         print(" ] }",end="")
-        #print("-------------------------------")
 
     def removeVuelo(self,bloque):
+        """Removes a flight block and merges adjacent empty slots if possible."""
         p = self.vuelos.inicio
         ant = None
         while (p is not None):
@@ -292,7 +295,7 @@ class Area:
                         ant.definirEspacioVacio(ant.tiempoInicio, p.sig.tiempoFin)
                         ant.sig = p.sig.sig 
                         if(p.sig.sig is not None):
-                            p.sig.sig.ant = ant #doblemente enlazado
+                            p.sig.sig.ant = ant # Doubly-linked
                         
                         self.vuelos.cantBloques -= 1
                     elif (not ant.ocupado):
@@ -309,8 +312,8 @@ class Area:
                         self.vuelos.cantBloques += 1
                         ant.sig = bloqueVacio
                         bloqueVacio.sig = p.sig
-                        bloqueVacio.ant = ant #doblemente enlazado
-                        p.sig.ant = bloqueVacio #doblemente enlazado
+                        bloqueVacio.ant = ant # Doubly-linked
+                        p.sig.ant = bloqueVacio # Doubly-linked
 
                 elif (ant is None):
                     if not(p.sig.ocupado):
@@ -320,7 +323,7 @@ class Area:
                         bloqueVacio = BloqueVuelo()
                         bloqueVacio.definirEspacioVacio(p.tiempoInicio, p.tiempoFin)
                         bloqueVacio.sig = p.sig
-                        p.sig.ant = bloqueVacio #doblemente enlazado
+                        p.sig.ant = bloqueVacio # Doubly-linked
                         self.vuelos.inicio = bloqueVacio
                         self.vuelos.cantBloques += 1
                 elif(p.sig is None):
@@ -331,7 +334,7 @@ class Area:
                         bloqueVacio = BloqueVuelo()
                         bloqueVacio.definirEspacioVacio(p.tiempoInicio, p.tiempoFin)
                         ant.sig = bloqueVacio
-                        bloqueVacio.ant = ant #doblemente enlazado
+                        bloqueVacio.ant = ant # Doubly-linked
 
                 self.vuelos.cantBloques -=1
                 self.vuelos.cantidad -=1
@@ -340,6 +343,7 @@ class Area:
             p=p.sig
 
     def exchange(self, area, A, B):
+        """(Not fully implemented) Swaps two intervals of flights between two areas."""
         C = deepcopy (A)
         D = deepcopy (B)
         self.vuelos.cantidad -= B.cantidad
@@ -354,11 +358,13 @@ class Area:
 ############################################################################
 
 class Zona(Area):
+    """Represents a remote parking zone."""
     def __init__ (self, tipoArea, tamano, idArea=0, coordenadaXCentro=0.0, \
         coordenadaYCentro=0.0):
         Area.__init__(self,  tipoArea,tamano, idArea,  coordenadaXCentro, coordenadaYCentro)
 
 class Puerta(Area):
+    """Represents a gate, which may have a jet bridge (manga)."""
     def __init__ (self, tipoArea, tamano, idArea=0, coordenadaXCentro=0.0, \
         coordenadaYCentro=0.0, velocidadDesembarco = 0.0):
         Area.__init__(self, tipoArea,tamano, idArea,  coordenadaXCentro, coordenadaYCentro)
@@ -366,6 +372,7 @@ class Puerta(Area):
 
 
 class Manga: 
+    """Represents a jet bridge."""
     def __init__(self):
         pass
 
@@ -373,6 +380,7 @@ class Manga:
         self.puerta=puerta
 
 class Intervalo(object):
+    """Helper class for the swap move, representing a continuous block of flights."""
     def __init__(self, bloque):
         if (bloque.ant is not None and not bloque.ant.ocupado):
             self.inicio = bloque.ant
@@ -436,6 +444,7 @@ class Intervalo(object):
         
 
 def insertarIntervalo(area1, A, B):
+    """(Not fully implemented) Helper function for the exchange/swap move."""
     area1.imprimirLista()
     if (A.inicio.ant is None):
         area1.vuelos.inicio.definirEspacioVacio( \

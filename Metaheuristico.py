@@ -10,11 +10,12 @@ from io import StringIO
 
 import sys
 class Annealer(object):
-    # parámetros
+    # Parameters for the Simulated Annealing algorithm
     Tmax = 25000.0
     Tmin = 2.5
     steps = 4000
 
+    # Parameters for the Tabu Search and reheating mechanism
     max_accepts = 50
     max_improve = 20
     reheat =1.25
@@ -22,11 +23,11 @@ class Annealer(object):
     listaTabu = []
 
     def __init__(self,x,y,z):
+        """Initializes the Annealer with a starting solution.
+        
+        This constructor generates an initial solution using a greedy First-In, First-Out (FIFO) heuristic.
+        Flights are assigned to the first available gate or zone. If no resource is free, the flight is delayed.
         """
-        Método FIFO para alcanzar una solución mas o menos óptima
-        """
-
-        #print ("Original: ")
         self.listaVuelos = deepcopy(x)
         self.listaPuertas = deepcopy(y)
         self.listaZonas = deepcopy(z)
@@ -34,6 +35,7 @@ class Annealer(object):
         self.maxTiempo = self.listaVuelos[0].tiempoEstimado
         self.minTiempo = self.listaVuelos[0].tiempoEstimado
 
+        # --- Start of FIFO Heuristic for Initial Solution ---
         j=0
         for vuelo in self.listaVuelos:
             asignado = False
@@ -63,17 +65,25 @@ class Annealer(object):
                     if (zona.insertarVuelo(vuelo,vuelo.tiempoLlegada)!=-1):
                         asignado = True
                         break
+        # --- End of FIFO Heuristic ---
+
         self.state = (self.listaPuertas, self.listaZonas,self.listaVuelos)
         best_state = deepcopy(self.state)
-        best_energy = self.energy(False) #CAMBIAR PARA EXPNUM
+        best_energy = self.energy(False)
         
         x= best_state
         y=best_energy
 
     def move(self,tabu = False):
+        """Generates a move to a neighboring solution.
+        
+        Randomly chooses between two types of moves:
+        1. Re-assignment: Moves a single flight to a new gate/zone.
+        2. Swap: Swaps the assignments of two flights that have overlapping time windows.
+        """
         selector =round(random.random())
         if(selector == 0):
-            #asignacion vuelo
+            # Move Type 1: Re-assign a flight
             indiceArea = round(random.random()*(len(self.state[0]+self.state[1])-1))
             area = (self.state[0]+self.state[1])[indiceArea]
 
@@ -82,7 +92,7 @@ class Annealer(object):
             indiceVuelo = round(random.random()*(area.vuelos.cantidad-1))+1
             cont = 1
             p = area.vuelos.inicio            
-            #Tabu
+            # If Tabu Search is active, check if the move is in the tabu list
             if (tabu):
                 if(("Insert", area.idArea, indiceVuelo) in self.listaTabu):
                     return
@@ -91,6 +101,7 @@ class Annealer(object):
                     if (len(self.listaTabu)>50):
                         self.listaTabu.remove(self.listaTabu[0])
 
+            # Find the selected flight in the area's flight list
             while(p is not None):
                 if (p.ocupado):
                     if (cont == indiceVuelo):
@@ -98,7 +109,7 @@ class Annealer(object):
                     cont +=1                              
                 p=p.sig
 
-
+            # Try to re-assign the flight to a new area
             p.vuelo.setTiempoLlegada (p.vuelo.tiempoEstimado)
             for puerta in self.state[0]:
                 if (puerta != area and puerta.insertarVuelo(p.vuelo,p.vuelo.tiempoEstimado)!=-1):
@@ -124,7 +135,7 @@ class Annealer(object):
                 if (iter2 > 60 ):
                     return
         else:
-            #intercambio de intervalos
+            # Move Type 2: Swap two flights
             indiceArea = round(random.random()*(len(self.state[0]+self.state[1])-1))
             area = (self.state[0]+self.state[1])[indiceArea]
 
@@ -148,7 +159,7 @@ class Annealer(object):
             if(area2.vuelos.cantidad == 0):
                 return
 
-            #Tabu
+            # If Tabu Search is active, check if the move is in the tabu list
             if (tabu):
                 if(("Exchange", area.idArea, indiceVuelo, area2.idArea) in self.listaTabu):
                     return
@@ -157,7 +168,7 @@ class Annealer(object):
                     if (len(self.listaTabu)>50):
                         self.listaTabu.remove(self.listaTabu[0])
 
-
+            # Find a flight in the second area that has an overlapping time window
             p2 = area2.vuelos.inicio
             while(p2 is not None):
                 if (p2.ocupado):
@@ -169,6 +180,7 @@ class Annealer(object):
                 p2=p2.sig
             if (p2 is None):
                 return
+            # The actual swap logic is commented out, but the structure is here.
             A = Clases.Intervalo (p)
             B = Clases.Intervalo (p2)
             while not ((A.t2 >= B.t1 and A.t3 <= B.t4) and \
@@ -188,9 +200,11 @@ class Annealer(object):
             #area.exchange(area2, A, B) 
 
     def energy(self,fin=True):
-        """Calculate state's energy"""
-        #for i in (self.state[0]+self.state[1]):
-        #    i.imprimirLista()
+        """Calculates the energy (cost) of the current state.
+        
+        The energy is the sum of penalties for flight waiting times and gate/zone idle times.
+        A lower energy value indicates a better solution.
+        """
         for i in self.state[2]:
             if(self.maxTiempo < i.tiempoLlegada):
                 self.maxTiempo = i.tiempoLlegada
@@ -199,17 +213,20 @@ class Annealer(object):
         # maxTiempo = self.maxTiempo + timedelta(hours=2)
         # minTiempo =self.minTiempo - timedelta(hours=1)
 
+        # 1. Calculate cost from flight waiting times
         costoVuelos = 0
         parCastigo = 900000
         xd=0
         for i in self.state[2]:
             costoVuelos += (i.tiempoLlegada - i.tiempoEstimado).total_seconds() ** 2
             xd += (i.tiempoLlegada - i.tiempoEstimado).total_seconds()
-        if (fin):
-            #print (self.maxTiempo, self.minTiempo)
+        if (fin): # Optional printing for final results
             print ("Hora asignada y hora estimada (L) : "+ str(xd/3600))
-        xd=0        
+        
+        # 2. Calculate cost from idle time in gates and zones
+        xd=0
         costoAreas = 0
+        # Penalty for idle time in gates (high penalty)
         for puerta in self.state[0]:
             costoPuerta =0
             c = 1
@@ -224,9 +241,10 @@ class Annealer(object):
             costoAreas += parCastigo * costoPuerta
             xd +=costoPuerta
         
-        if (fin):
+        if (fin): # Optional printing
             print("Tiempo sin uso de Puertas (P*U) : "+ str(xd/3600))
         xd=0
+        # Penalty for idle time in zones (low penalty)
         for zona in self.state[1]:
             costoZona = 0
             c=1
@@ -240,16 +258,13 @@ class Annealer(object):
             xd +=costoZona
         if (fin):
             print("Tiempo sin uso de Zonas (U) "+ str(xd/3600))
+
         return costoAreas + costoVuelos
 
     def anneal(self):
-        """
-        Minimizar el tiempo de espera de todos los vuelos ya asignados (tiempo real - tiempo programado) 
-        y el tiempo sin usar de las puertas del aeropuerto.
-        Parameters
-        state : an initial arrangement of the system
-        Returns
-        (state, energy): the best state and energy found.
+        """Performs the Simulated Annealing optimization.
+        
+        Includes a Tabu Search phase triggered by search stagnation to escape local optima.
         """
         step = 0
         if self.Tmin <= 0.0:
@@ -258,6 +273,7 @@ class Annealer(object):
         Tfactor = -math.log(self.Tmax / self.Tmin)
 
         T = self.Tmax
+        # Calculate energy of the initial state
         E = self.energy(False)
         prevState = deepcopy(self.state)
         prevEnergy = E
@@ -266,14 +282,16 @@ class Annealer(object):
         trials, accepts, improves = 0, 0, 0
         unaccepts, unimproves = 0,0
 
-        # Attempt moves to new states
+        # Main SA loop
         while step < self.steps:
             step += 1
+            # Decrease temperature
             T = self.Tmax * math.exp(Tfactor * step / self.steps)
             self.move()
             E = self.energy(False)
             dE = E - prevEnergy
             trials += 1
+            # Metropolis acceptance criterion
             if dE > 0.0 and math.exp(-dE / T) < random.random():
                 # Restore previous state
                 self.state = deepcopy(prevState)
@@ -291,7 +309,8 @@ class Annealer(object):
                 if E < best_energy:
                     best_state = deepcopy(self.state)
                     best_energy = E
-            #Iterative Tabu Search        
+
+            # If search stagnates, trigger Tabu Search and reheat the temperature
             if (unaccepts > self.max_accepts or unimproves > self.max_improve):
                 unaccepts = 0
                 unimproves = 0
@@ -313,7 +332,5 @@ class Annealer(object):
 
         # Return best state and energy
         self.state = deepcopy(best_state)
-
-        #print("Final: ") 
-        self.energy(False) #CAMBIAR PARA EXPNUM
+        self.energy(False)
         return best_state, best_energy
